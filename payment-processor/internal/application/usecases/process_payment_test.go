@@ -136,3 +136,21 @@ func TestGenerateRandomCardStatus_Distribution(t *testing.T) {
 
 	t.Logf("Distribuição em %d rodadas -> Pagos: %d | Falhas: %d (%.2f%%)", iterations, pagoCount, falhaCount, falhaPercentage)
 }
+
+func TestProcessPaymentUseCase_UpdateStatus(t *testing.T) {
+	// Setup
+	mockRepo := &MockPaymentRepository{}
+	uc := NewProcessPaymentUseCase(mockRepo, &MockMessageQueue{})
+
+	// Executamos a atualização direta
+	err := uc.UpdateStatus(context.Background(), "123", domain.StatusPago, time.Now())
+
+	// Validações
+	if err != nil {
+		t.Fatalf("não era esperado um erro, mas recebeu: %v", err)
+	}
+
+	if !mockRepo.UpdateStatusCalled {
+		t.Errorf("esperado que o método UpdateStatus do repositório fosse chamado")
+	}
+}

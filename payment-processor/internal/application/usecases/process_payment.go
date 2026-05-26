@@ -66,6 +66,10 @@ func (uc *ProcessPaymentUseCase) processCard(ctx context.Context, payment *domai
 	return nil
 }
 
+func (uc *ProcessPaymentUseCase) UpdateStatus(ctx context.Context, orderID string, status domain.PaymentStatus, paymentDate time.Time) error {
+	return uc.repo.UpdateStatus(ctx, orderID, status, paymentDate)
+}
+
 func generateRandomCardStatus() domain.PaymentStatus {
 	
 	chance := rand.Intn(5)
