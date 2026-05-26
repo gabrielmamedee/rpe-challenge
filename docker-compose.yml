@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rpe-postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+      POSTGRES_DB: orderdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - rpe-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: rpe-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - rpe-network
+
+  mongodb:
+    image: mongo:7
+    container_name: rpe-mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: adminpassword
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    networks:
+      - rpe-network
+
+  localstack:
+    image: localstack/localstack:latest
+    container_name: rpe-localstack
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      - SERVICES=sqs
+      - DEBUG=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - ./scripts/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh
+    entrypoint: >
+      bash -c "chmod +x /etc/localstack/init/ready.d/init-sqs.sh && exec docker-entrypoint.sh"
+    networks:
+      - rpe-network
+
+networks:
+  rpe-network:
+    driver: bridge
+
+volumes:
+  pgdata:
+  mongodata:
