@@ -1,0 +1,88 @@
+spring:
+  application:
+    name: order-service
+
+  threads:
+    virtual:
+      enabled: true
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/orderdb}
+    username: ${DB_USER:admin}
+    password: ${DB_PASSWORD:adminpassword}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  cloud:
+    aws:
+      credentials:
+        access-key: ${SPRING_CLOUD_AWS_CREDENTIALS_ACCESS_KEY:teste}
+        secret-key: ${SPRING_CLOUD_AWS_CREDENTIALS_SECRET_KEY:teste}
+      region:
+        static: ${SPRING_CLOUD_AWS_REGION_STATIC:us-east-1}
+      endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
+      sqs:
+        listener:
+          auto-startup: true
+
+api:
+  security:
+    token:
+      secret: ${JWT_SECRET:5feb69a9200fe20e1fbd22a04633eaf4d9644264a8a6be5047eaf1c78bc4d61b}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+  info:
+    env:
+      enabled: true
+
+payment:
+  processor:
+    url: ${PAYMENT_PROCESSOR_URL:http://localhost:8081}
+
+# Configuração do Circuit Breaker e Timeout (Diferencial Resilience4j)
+resilience4j:
+  circuitbreaker:
+    instances:
+      paymentProcessor:
+        slidingWindowSize: 10                  # Avalia as últimas 10 chamadas
+        failureRateThreshold: 50               # Abre o circuito se 50% das chamadas falharem
+        waitDurationInOpenState: 10000ms       # Espera 10 segundos em estado ABERTO antes de tentar o meio-aberto
+        permittedNumberOfCallsInHalfOpenState: 3 # Permite 3 chamadas de teste no estado MEIO-ABERTO
+  timelimiter:
+    instances:
+      paymentProcessor:
+        timeoutDuration: 3s
+
+aws:
+  sqs:
+    queue:
+      pix-notifications: pagamento-pix-status
+
+info:
+  app:
+    name: "Order Service API"
+    description: "Microsserviço de gerenciamento de ordens e integrações de pagamento."
+    version: "1.0.0"
+
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

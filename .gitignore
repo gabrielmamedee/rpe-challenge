@@ -3,3 +3,5 @@ volume/
 text.md
 
 .env
+
+.DS_Store
