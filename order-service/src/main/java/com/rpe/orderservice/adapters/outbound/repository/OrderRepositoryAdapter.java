@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -36,6 +38,42 @@ public class OrderRepositoryAdapter implements OrderRepositoryPort {
     @Override
     public List<Order> findByStatus(PaymentStatus status) {
         return repository.findByStatus(status).stream()
+                .map(entity -> {
+                    Order order = new Order();
+                    order.setId(entity.getId());
+                    order.setItemId(entity.getItemId());
+                    order.setAmount(entity.getAmount());
+                    order.setPaymentMethod(entity.getPaymentMethod());
+                    order.setBuyerName(entity.getBuyerName());
+                    order.setBuyerCpf(entity.getBuyerCpf());
+                    order.setStatus(entity.getStatus());
+                    order.setCreatedAt(entity.getCreatedAt());
+                    order.setPaymentDate(entity.getPaymentDate());
+                    return order;
+                })
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    @Override
+    public Optional<Order> findById(UUID id) {
+        return repository.findById(id).map(entity -> {
+            Order order = new Order();
+            order.setId(entity.getId());
+            order.setItemId(entity.getItemId());
+            order.setAmount(entity.getAmount());
+            order.setPaymentMethod(entity.getPaymentMethod());
+            order.setBuyerName(entity.getBuyerName());
+            order.setBuyerCpf(entity.getBuyerCpf());
+            order.setStatus(entity.getStatus());
+            order.setCreatedAt(entity.getCreatedAt());
+            order.setPaymentDate(entity.getPaymentDate());
+            return order;
+        });
+    }
+
+    @Override
+    public List<Order> findByBuyerCpf(String buyerCpf) {
+        return repository.findByBuyerCpf(buyerCpf).stream()
                 .map(entity -> {
                     Order order = new Order();
                     order.setId(entity.getId());

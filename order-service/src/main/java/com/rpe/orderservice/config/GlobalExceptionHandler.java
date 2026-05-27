@@ -18,6 +18,11 @@ public class GlobalExceptionHandler {
     // Tratamento para as nossas Exceções de Domínio Genéricas (Regras de Negócio)
     @ExceptionHandler(DomainException.class)
     public ResponseEntity<Map<String, Object>> handleDomainException(DomainException ex) {
+
+        if (ex.getMessage() != null && ex.getMessage().contains("Idempotency-Key")) {
+            return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage());
+        }
+
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 

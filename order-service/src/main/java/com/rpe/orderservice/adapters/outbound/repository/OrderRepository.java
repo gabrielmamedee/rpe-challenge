@@ -8,4 +8,5 @@ import java.util.UUID;
 
 public interface OrderRepository extends JpaRepository<OrderDbEntity, UUID> {
     List<OrderDbEntity> findByStatus(PaymentStatus status);
+    List<OrderDbEntity> findByBuyerCpf(String buyerCpf);
 }

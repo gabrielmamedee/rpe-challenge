@@ -29,6 +29,18 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
+  cloud:
+    aws:
+      credentials:
+        access-key: teste
+        secret-key: teste
+      region:
+        static: us-east-1
+      sqs:
+        endpoint: http://localhost:4566
+        listener:
+          auto-startup: true
+
 api:
   security:
     token:
@@ -39,6 +51,10 @@ management:
     web:
       exposure:
         include: health,info
+
+  info:
+    env:
+      enabled: true
 
 payment:
   processor:
@@ -57,3 +73,19 @@ resilience4j:
     instances:
       paymentProcessor:
         timeoutDuration: 3s
+
+aws:
+  sqs:
+    queue:
+      pix-notifications: pagamento-pix-status
+
+info:
+  app:
+    name: "Order Service API"
+    description: "Microsserviço de gerenciamento de ordens e integrações de pagamento."
+    version: "1.0.0"
+
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

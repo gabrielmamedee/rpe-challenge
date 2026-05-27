@@ -2,9 +2,14 @@ package com.rpe.orderservice.adapters.inbound.http.mapper;
 
 import com.rpe.orderservice.adapters.inbound.http.dto.OrderRequest;
 import com.rpe.orderservice.adapters.inbound.http.dto.OrderResponse;
+import com.rpe.orderservice.adapters.inbound.http.dto.OrderSummaryResponse;
 import com.rpe.orderservice.core.domain.Order;
+import com.rpe.orderservice.core.domain.PaymentMethod;
+import com.rpe.orderservice.core.domain.exceptions.DomainException;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+
+import java.util.List;
 
 @Mapper(componentModel = "spring")
 public interface OrderMapper {
@@ -24,4 +29,28 @@ public interface OrderMapper {
     @Mapping(target = "data_criacao", source = "createdAt")
     @Mapping(target = "data_pagamento", source = "paymentDate")
     OrderResponse toResponseDto(Order order);
+
+    default PaymentMethod mapPaymentMethod(String meioPagamento) {
+        if (meioPagamento == null || meioPagamento.isBlank()) {
+            return null;
+        }
+        try {
+            return PaymentMethod.valueOf(meioPagamento.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new DomainException("Meio de pagamento inválido. Valores aceitos: PIX, CREDITO, DEBITO");
+        }
+    }
+
+    default List<OrderSummaryResponse> toSummaryResponseList(List<Order> orders) {
+        if (orders == null) {
+            return java.util.List.of();
+        }
+        return orders.stream()
+                .map(order -> new OrderSummaryResponse(
+                        order.getId(),
+                        order.getBuyerName(),
+                        order.getStatus() != null ? order.getStatus().name() : null
+                ))
+                .toList();
+    }
 }
