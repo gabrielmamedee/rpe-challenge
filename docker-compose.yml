@@ -55,6 +55,26 @@ services:
     networks:
       - rpe-network
 
+  payment-processor:
+    build:
+      context: ./payment-processor
+      dockerfile: Dockerfile
+    container_name: payment-processor
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - MONGO_URI=mongodb://admin:adminpassword@mongodb:27017
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      - mongodb
+      - localstack
+    networks:
+      - rpe-network
+
 networks:
   rpe-network:
     driver: bridge
