@@ -14,6 +14,11 @@ services:
       - pgdata:/var/lib/postgresql/data
     networks:
       - rpe-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d orderdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -72,6 +77,36 @@ services:
     depends_on:
       - mongodb
       - localstack
+    networks:
+      - rpe-network
+
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/orderdb
+      - SPRING_DATASOURCE_USERNAME=admin
+      - SPRING_DATASOURCE_PASSWORD=adminpassword
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - SPRING_CLOUD_AWS_CREDENTIALS_ACCESS_KEY=test
+      - SPRING_CLOUD_AWS_CREDENTIALS_SECRET_KEY=test
+      - SPRING_CLOUD_AWS_REGION_STATIC=us-east-1
+      - SPRING_CLOUD_AWS_ENDPOINT=http://localstack:4566
+      - PAYMENT_PROCESSOR_URL=http://payment-processor:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      localstack:
+        condition: service_started
+      payment-processor:
+        condition: service_started
     networks:
       - rpe-network
 

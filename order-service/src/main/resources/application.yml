@@ -15,10 +15,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
+    show-sql: false
 
   flyway:
     enabled: true
@@ -32,12 +29,12 @@ spring:
   cloud:
     aws:
       credentials:
-        access-key: teste
-        secret-key: teste
+        access-key: ${SPRING_CLOUD_AWS_CREDENTIALS_ACCESS_KEY:teste}
+        secret-key: ${SPRING_CLOUD_AWS_CREDENTIALS_SECRET_KEY:teste}
       region:
-        static: us-east-1
+        static: ${SPRING_CLOUD_AWS_REGION_STATIC:us-east-1}
+      endpoint: ${SPRING_CLOUD_AWS_ENDPOINT:http://localhost:4566}
       sqs:
-        endpoint: http://localhost:4566
         listener:
           auto-startup: true
 
