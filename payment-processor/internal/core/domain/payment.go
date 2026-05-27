@@ -10,6 +10,7 @@ const (
 	StatusPago     PaymentStatus = "PAGO"
 	StatusCancelado PaymentStatus = "CANCELADO"
 	StatusRecusado PaymentStatus = "RECUSADO"
+	StatusReprovado PaymentStatus = "REPROVADO"
 )
 
 const (

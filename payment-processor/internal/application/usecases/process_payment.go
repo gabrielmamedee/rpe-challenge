@@ -51,7 +51,7 @@ func (uc *ProcessPaymentUseCase) processPix(ctx context.Context, payment *domain
 
 func (uc *ProcessPaymentUseCase) processCard(ctx context.Context, payment *domain.Payment) error {
 	
-	finalStatus := generateRandomCardStatus()
+	finalStatus := generateRandomStatus(domain.StatusRecusado)
 	now := time.Now()
 
 
@@ -70,13 +70,23 @@ func (uc *ProcessPaymentUseCase) UpdateStatus(ctx context.Context, orderID strin
 	return uc.repo.UpdateStatus(ctx, orderID, status, paymentDate)
 }
 
-func generateRandomCardStatus() domain.PaymentStatus {
+func (uc *ProcessPaymentUseCase) CompletePixProcess(ctx context.Context, orderID string) error {
 	
+	finalStatus := generateRandomStatus(domain.StatusReprovado)
+
+	if err := uc.repo.UpdateStatus(ctx, orderID, finalStatus, time.Now()); err != nil {
+		return err
+	}
+
+	return uc.queue.PublishPixStatus(ctx, orderID, finalStatus)
+}
+
+func generateRandomStatus(specificFailureStatus domain.PaymentStatus) domain.PaymentStatus {
 	chance := rand.Intn(5)
 
 	if chance == 0 {
 		if rand.Intn(2) == 0 {
-			return domain.StatusRecusado
+			return specificFailureStatus
 		}
 		return domain.StatusCancelado
 	}

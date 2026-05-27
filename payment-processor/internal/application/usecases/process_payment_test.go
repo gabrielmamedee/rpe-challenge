@@ -120,7 +120,7 @@ func TestGenerateRandomCardStatus_Distribution(t *testing.T) {
 	falhaCount := 0
 
 	for i := 0; i < iterations; i++ {
-		status := generateRandomCardStatus()
+		status := generateRandomStatus(domain.StatusRecusado)
 		if status == domain.StatusPago {
 			pagoCount++
 		} else if status == domain.StatusRecusado || status == domain.StatusCancelado {
@@ -152,5 +152,30 @@ func TestProcessPaymentUseCase_UpdateStatus(t *testing.T) {
 
 	if !mockRepo.UpdateStatusCalled {
 		t.Errorf("esperado que o método UpdateStatus do repositório fosse chamado")
+	}
+}
+
+func TestProcessPaymentUseCase_CompletePixProcess(t *testing.T) {
+	// Setup
+	mockRepo := &MockPaymentRepository{}
+	mockQueue := &MockMessageQueue{}
+	uc := NewProcessPaymentUseCase(mockRepo, mockQueue)
+
+	orderID := "PIX-999"
+
+	// Executamos o método finalizador do PIX
+	err := uc.CompletePixProcess(context.Background(), orderID)
+
+	// Validações
+	if err != nil {
+		t.Fatalf("não era esperado um erro, mas recebeu: %v", err)
+	}
+
+	if !mockRepo.UpdateStatusCalled {
+		t.Errorf("esperado que UpdateStatus fosse chamado no BD ao completar o PIX")
+	}
+
+	if !mockQueue.PublishPixStatusCalled {
+		t.Errorf("esperado que a fila de Status do PIX (PublishPixStatus) fosse chamada")
 	}
 }

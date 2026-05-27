@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"payment-processor/internal/application/usecases"
-	"payment-processor/internal/core/domain"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -64,7 +63,8 @@ func (c *SQSConsumer) pollMessages(ctx context.Context) {
 		orderID := payload["id_ordem"]
 		log.Printf("Processando PIX da ordem: %s", orderID)
 
-		err = c.useCase.UpdateStatus(ctx, orderID, domain.StatusPago, time.Now())
+		err = c.useCase.CompletePixProcess(ctx, orderID)
+
 		if err != nil {
 			log.Printf("Erro ao processar PIX %s: %v", orderID, err)
 			continue
