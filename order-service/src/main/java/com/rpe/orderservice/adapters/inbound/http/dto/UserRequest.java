@@ -2,7 +2,7 @@ package com.rpe.orderservice.adapters.inbound.http.dto;
 
 import jakarta.validation.constraints.NotBlank;
 
-public record LoginRequestDto(
+public record UserRequest(
         @NotBlank(message = "O login é obrigatório")
         String login,
 

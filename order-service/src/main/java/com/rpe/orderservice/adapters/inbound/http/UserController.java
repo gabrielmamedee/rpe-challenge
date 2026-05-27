@@ -1,6 +1,8 @@
 package com.rpe.orderservice.adapters.inbound.http;
 
-import com.rpe.orderservice.adapters.inbound.http.dto.UserRequestDto;
+import com.rpe.orderservice.adapters.inbound.http.dto.UserRequest;
+import com.rpe.orderservice.adapters.inbound.http.dto.UserResponse;
+import com.rpe.orderservice.adapters.inbound.http.mapper.UserMapper;
 import com.rpe.orderservice.core.domain.User;
 import com.rpe.orderservice.core.ports.inbound.CreateUserUseCase;
 import jakarta.validation.Valid;
@@ -21,20 +23,14 @@ import java.util.Map;
 public class UserController {
 
     private final CreateUserUseCase createUserUseCase;
+    private final UserMapper userMapper;
 
     @PostMapping
-    public ResponseEntity<Map<String, Object>> createUser(@Valid @RequestBody UserRequestDto dto) {
-        User user = new User();
-        user.setLogin(dto.login());
-        user.setPassword(dto.password());
+    public ResponseEntity<UserResponse> createUser(@Valid @RequestBody UserRequest dto) {
+        User user = userMapper.toDomain(dto);
 
         User savedUser = createUserUseCase.execute(user);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("id", savedUser.getId());
-        response.put("login", savedUser.getLogin());
-        response.put("role", savedUser.getRole());
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(userMapper.toResponseDto(savedUser));
     }
 }

@@ -24,7 +24,36 @@ spring:
     enabled: true
     baseline-on-migrate: true
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
 api:
   security:
     token:
-      secret: ${JWT_SECRET}
+      secret: ${JWT_SECRET:5feb69a9200fe20e1fbd22a04633eaf4d9644264a8a6be5047eaf1c78bc4d61b}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+payment:
+  processor:
+    url: ${PAYMENT_PROCESSOR_URL:http://localhost:8081}
+
+# Configuração do Circuit Breaker e Timeout (Diferencial Resilience4j)
+resilience4j:
+  circuitbreaker:
+    instances:
+      paymentProcessor:
+        slidingWindowSize: 10                  # Avalia as últimas 10 chamadas
+        failureRateThreshold: 50               # Abre o circuito se 50% das chamadas falharem
+        waitDurationInOpenState: 10000ms       # Espera 10 segundos em estado ABERTO antes de tentar o meio-aberto
+        permittedNumberOfCallsInHalfOpenState: 3 # Permite 3 chamadas de teste no estado MEIO-ABERTO
+  timelimiter:
+    instances:
+      paymentProcessor:
+        timeoutDuration: 3s

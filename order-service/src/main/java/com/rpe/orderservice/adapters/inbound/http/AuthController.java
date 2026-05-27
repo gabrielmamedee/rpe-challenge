@@ -1,6 +1,7 @@
 package com.rpe.orderservice.adapters.inbound.http;
 
-import com.rpe.orderservice.adapters.inbound.http.dto.LoginRequestDto;
+import com.rpe.orderservice.adapters.inbound.http.dto.LoginRequest;
+import com.rpe.orderservice.adapters.inbound.http.dto.LoginResponse;
 import com.rpe.orderservice.config.security.TokenService;
 import com.rpe.orderservice.core.domain.User;
 import com.rpe.orderservice.core.ports.outbound.UserRepositoryPort;
@@ -27,16 +28,14 @@ public class AuthController {
     private final UserRepositoryPort userRepositoryPort;
 
     @PostMapping
-    public ResponseEntity<Map<String, String>> login(@Valid @RequestBody LoginRequestDto dto) {
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest dto) {
 
         var usernamePassword = new UsernamePasswordAuthenticationToken(dto.login(), dto.password());
         var auth = this.authenticationManager.authenticate(usernamePassword);
         User user = userRepositoryPort.findByLogin(dto.login()).orElseThrow();
         var token = tokenService.generateToken(user);
 
-        Map<String, String> response = new HashMap<>();
-        response.put("token", token);
-        response.put("type", "Bearer");
+        LoginResponse response = new LoginResponse(token, "Bearer");
 
         return ResponseEntity.ok(response);
     }

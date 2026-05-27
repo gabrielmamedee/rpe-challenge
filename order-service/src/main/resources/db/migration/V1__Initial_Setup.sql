@@ -1,16 +1,16 @@
-CREATE TABLE tb_users (
+CREATE TABLE users (
     id UUID PRIMARY KEY,
     login VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL
 );
 
-CREATE TABLE tb_payment_methods (
+CREATE TABLE payment_methods (
     id UUID PRIMARY KEY,
     description VARCHAR(100) NOT NULL UNIQUE
 );
 
-CREATE TABLE tb_orders (
+CREATE TABLE orders (
     id UUID PRIMARY KEY,
     item_id UUID NOT NULL,
     amount DECIMAL(10, 2) NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE tb_orders (
     payment_date TIMESTAMP
 );
 
-INSERT INTO tb_payment_methods (id, description) VALUES
+INSERT INTO payment_methods (id, description) VALUES
     (gen_random_uuid(), 'PIX'),
     (gen_random_uuid(), 'CREDITO'),
     (gen_random_uuid(), 'DEBITO');
