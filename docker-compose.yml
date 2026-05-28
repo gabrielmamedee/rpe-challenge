@@ -54,9 +54,9 @@ services:
     volumes:
       - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
-      - ./scripts/init-sqs.sh:/etc/localstack/init/ready.d/init-sqs.sh
+      - ./scripts/init-sqs.sh:/tmp/init-sqs-source.sh
     entrypoint: >
-      bash -c "sed -i 's/\r//' /etc/localstack/init/ready.d/init-sqs.sh && chmod +x /etc/localstack/init/ready.d/init-sqs.sh && exec docker-entrypoint.sh"
+      bash -c "mkdir -p /etc/localstack/init/ready.d && tr -d '\r' < /tmp/init-sqs-source.sh > /etc/localstack/init/ready.d/init-sqs.sh && chmod +x /etc/localstack/init/ready.d/init-sqs.sh && exec docker-entrypoint.sh"
     healthcheck:
       test: ["CMD-SHELL", "awslocal sqs get-queue-url --queue-name pagamento-pix-pendente.fifo && awslocal sqs get-queue-url --queue-name pagamento-pix-status"]
       interval: 5s
