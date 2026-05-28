@@ -110,6 +110,20 @@ services:
     networks:
       - rpe-network
 
+  order-web:
+    build:
+      context: ./order-web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ""
+    container_name: order-web
+    ports:
+      - "3000:80"
+    depends_on:
+      - order-service
+    networks:
+      - rpe-network
+
 networks:
   rpe-network:
     driver: bridge
