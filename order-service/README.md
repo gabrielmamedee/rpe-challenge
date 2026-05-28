@@ -1,147 +1,222 @@
+# Order Service
 
+Microsserviço responsável pelo gerenciamento do ciclo de vida das ordens de compra dentro do ecossistema de pagamentos do desafio RPE. Desenvolvido em **Java 21** com **Spring Boot 3.5**, o serviço centraliza a criação de ordens, a integração síncrona com o processador de pagamentos e o processamento assíncrono de atualizações de status via mensageria, operando sob os princípios da **Arquitetura Hexagonal (Ports & Adapters)** para garantir isolamento total do domínio em relação à infraestrutura.
 
-com.rpe.orderservice
-├── core                        # O Hexágono (Regras de Negócio)
-│   ├── domain                  # Entidades, Enums e Exceções de Domínio
-│   └── ports                   # Contratos/Interfaces
-│       ├── inbound             # Interfaces que os Casos de Uso implementam (ex: CreateOrderUseCase)
-│       └── outbound            # Interfaces que a infraestrutura implementa (ex: OrderRepositoryPort)
-├── adapters                    # A Infraestrutura (Frameworks, BD, APIs)
-│   ├── inbound                 # Quem chama a nossa aplicação (REST Controllers, SQS Listeners)
-│   └── outbound                # Quem a nossa aplicação chama (Spring Data Repositories, Feign Clients)
-└── config                      # Configurações globais (Beans, Security, Error Handler, Redis)
+---
 
-Order Service - Sistema de Processamento de Pedidos Resiliente
-Este projeto é um microsserviço de gerenciamento de ordens de compra, desenvolvido como resolução de um desafio técnico focado em alta disponibilidade, resiliência e boas práticas de engenharia de software.
+## Recursos Diferenciais
 
-O sistema simula um e-commerce ou gateway de pagamento, recebendo pedidos de forma síncrona, integrando-se com serviços externos e processando atualizações de status de forma assíncrona via mensageria.
+### Worker de Reprocessamento de Pedidos
 
-🏛️ Arquitetura e Padrões de Projeto
-A aplicação foi construída sob os rigorosos padrões da Arquitetura Hexagonal (Ports and Adapters) combinada com conceitos de Domain-Driven Design (DDD).
+Um scheduler interno (`OrderReprocessingScheduler`) executa a cada **60 segundos** buscando todas as ordens em status `PENDENTE_PAGAMENTO`. Para cada uma delas, o serviço retenta a integração com o `payment-processor`. Isso resolve automaticamente os casos em que a chamada síncrona inicial falhou por indisponibilidade do serviço externo, sem intervenção manual. Ordens que continuam sem resposta permanecem pendentes até o próximo ciclo.
 
-O coração do sistema (Core/Domain) é 100% isolado de frameworks, banco de dados ou detalhes de infraestrutura, garantindo alta testabilidade e facilidade de manutenção.
+```
+@Scheduled(fixedDelay = 60000)
+→ Busca ordens PENDENTE_PAGAMENTO
+→ Retenta processPayment via Feign
+→ Persiste novo status se diferente de PENDENTE_PAGAMENTO
+```
 
-✨ Diferenciais Técnicos Implementados
-Idempotência Distribuída: Implementação de trava de segurança utilizando Redis (via Idempotency-Key header) com TTL de 5 minutos, protegendo a API contra ataques de repetição ("duplo clique") e garantindo consistência em retentativas de rede.
+### Idempotência Distribuída
 
-Mensageria e Eventos: Consumo assíncrono de eventos de pagamento através do AWS SQS (emulado via LocalStack), permitindo o processamento em background sem travar a thread do usuário.
+O endpoint `POST /orders` exige o header `Idempotency-Key`. Ao receber a requisição, o controller realiza um `SET NX` no Redis com a chave `idemp_order:<valor>` e TTL de **3 minutos**. Se a chave já existir, a requisição é rejeitada com erro `409`, prevenindo criação de ordens duplicadas em cenários de duplo clique, retry automático do cliente ou instabilidade de rede.
 
-Circuit Breaker (Self-Healing): Uso do Resilience4j na comunicação síncrona com microsserviços externos (via Feign Client). Em caso de falhas ou indisponibilidade, o sistema aciona métodos de Fallback e adota processamento tolerante a falhas.
+A chave é removida do Redis em caso de falha no processamento, permitindo que o cliente reenvie legitimamente a mesma `Idempotency-Key` após um erro.
 
-Tratamento de Exceções Global: API blindada com um @ControllerAdvice, garantindo retornos JSON padronizados (RFC 7807) para erros de domínio (400, 409) sem vazar StackTraces.
+### Cache com Redis
 
-Evolução Contínua de Banco de Dados: Gerenciamento de schema automatizado via Flyway, garantindo que o PostgreSQL esteja sempre na versão correta.
+A listagem de meios de pagamento (`GET /payment-methods`) utiliza `@Cacheable` com TTL de **30 minutos**, armazenando os dados em Redis com serialização JSON. Como esses dados raramente mudam, o cache elimina leituras repetidas ao banco de dados em cada requisição do frontend.
 
-🛠️ Stack Tecnológica
-Linguagem: Java 21
+```
+GET /payment-methods
+→ Verifica cache Redis (chave: payment_methods)
+→ Cache HIT: retorna sem tocar no banco
+→ Cache MISS: consulta PostgreSQL e armazena por 30 minutos
+```
 
-Framework Base: Spring Boot 3.5.x
+### Feign Client com Circuit Breaker
 
-Banco de Dados Relacional: PostgreSQL (com Spring Data JPA e Flyway)
+A comunicação síncrona com o `payment-processor` (Go) é feita via **Spring Cloud OpenFeign**. O `PaymentIntegrationAdapter` envolve a chamada com um **Circuit Breaker Resilience4j**, configurado com:
 
-Cache & Lock Distribuído: Redis (com Spring Data Redis)
+| Parâmetro | Valor |
+|---|---|
+| Janela de avaliação | 10 chamadas |
+| Taxa de falha para abrir | 50% |
+| Tempo em estado aberto | 10 segundos |
+| Chamadas no estado semi-aberto | 3 |
+| Timeout por chamada | 3 segundos |
 
-Mensageria: AWS SQS (Spring Cloud AWS + LocalStack)
+Quando o circuito abre, o método `fallbackProcessPayment` é acionado, mantendo a ordem com status `PENDENTE_PAGAMENTO` — que será retomada pelo worker de reprocessamento assim que o serviço externo se recuperar.
 
-Comunicação REST: OpenFeign
+### Mensageria com AWS SQS
 
-Resiliência: Resilience4j (CircuitBreaker)
+O `PixNotificationListener` escuta a fila `pagamento-pix-status` (via LocalStack em desenvolvimento) usando `@SqsListener`. Quando o `payment-processor` (Go) finaliza o processamento de um pagamento PIX, ele publica uma mensagem nessa fila com o ID da ordem e o status resultante.
 
-Mapeamento de Objetos: MapStruct / Lombok
+O listener recebe a mensagem, executa o `UpdateOrderStatusUseCase`, persiste o novo status no PostgreSQL e dispara um **callback via Feign** (`PATCH /api/v1/payments/status`) de volta ao `payment-processor` para sincronizar o estado no MongoDB.
 
-Testes: JUnit 5, Mockito, MockMvc
+```
+[Go: payment-processor]
+    └── publica em pagamento-pix-status
+          ↓
+[PixNotificationListener]
+    └── UpdateOrderStatusUseCase
+          ├── persiste no PostgreSQL
+          └── callback PATCH → payment-processor
+```
 
-📂 Estrutura de Diretórios (Hexágono)
-Plaintext
+### Spring Boot Actuator
+
+O Actuator está habilitado com exposição dos endpoints `health` e `info`:
+
+- `GET /actuator/health` — estado da aplicação e dependências
+- `GET /actuator/info` — metadados do serviço (nome, descrição, versão)
+
+---
+
+## Estrutura de Pastas
+
+```
 src/main/java/com/rpe/orderservice/
-├── adapters/          # Adaptadores (Implementações das Portas)
-│   ├── inbound/       # Entrada: Controllers REST, Listeners SQS (HTTP/Mensageria -> Core)
-│   └── outbound/      # Saída: Repositories JPA, Clients Feign (Core -> Banco/APIs)
-├── core/              # O Coração da Aplicação (Isolado de frameworks)
-│   ├── domain/        # Entidades de Negócio, Enums e Exceções de Domínio
-│   ├── ports/         # Contratos (Interfaces Inbound e Outbound)
-│   └── usecases/      # Casos de Uso (As regras de negócio em si)
+│
+├── core/                              # Domínio isolado de frameworks
+│   ├── domain/                        # Entidades de negócio e enums
+│   │   ├── Order.java                 # Entidade principal com lógica de updateStatus
+│   │   ├── PaymentStatus.java         # Enum: PENDENTE_PAGAMENTO, PAGO, CANCELADO, RECUSADO, REPROVADO
+│   │   ├── PaymentMethod.java         # Enum: PIX, CREDITO, DEBITO
+│   │   └── exceptions/                # DomainException, ResourceNotFoundException
+│   ├── ports/
+│   │   ├── inbound/                   # Interfaces dos casos de uso (entrada)
+│   │   └── outbound/                  # Interfaces de repositórios e integrações (saída)
+│   └── usecases/                      # Implementações dos casos de uso
+│       ├── CreateOrderUseCaseImpl
+│       ├── UpdateOrderStatusUseCaseImpl
+│       ├── ReprocessPendingOrdersUseCaseImpl
+│       ├── FindOrdersByBuyerCpfUseCaseImpl
+│       ├── ListPaymentOptionsUseCaseImpl
+│       └── CreateUserUseCaseImpl
+│
+├── adapters/
+│   ├── inbound/
+│   │   ├── http/                      # Controllers REST + DTOs + MapStruct mappers
+│   │   │   ├── OrderController        # POST /orders, GET /orders
+│   │   │   ├── AuthController         # POST /login
+│   │   │   ├── UserController         # POST /users
+│   │   │   └── PaymentMethodController# GET /payment-methods
+│   │   ├── sqs/                       # Listener SQS
+│   │   │   └── PixNotificationListener
+│   │   └── scheduler/                 # Scheduler de reprocessamento
+│   │       └── OrderReprocessingScheduler
+│   └── outbound/
+│       ├── http/                      # Feign clients para o payment-processor
+│       │   ├── PaymentProcessorClient
+│       │   ├── PaymentIntegrationAdapter  # Circuit Breaker + fallback
+│       │   └── PaymentCallbackAdapter     # Callback de status
+│       └── repository/                # Adapters JPA + entidades de banco
+│           ├── OrderRepositoryAdapter
+│           ├── UserRepositoryAdapter
+│           └── PaymentOptionRepositoryAdapter
+│
+├── config/
+│   ├── security/                      # Spring Security + JWT (TokenService, SecurityFilter)
+│   ├── CacheConfig.java               # Redis: TTL 30min, serialização JSON
+│   ├── GlobalExceptionHandler.java    # @ControllerAdvice com respostas padronizadas
+│   └── web/WebConfig.java             # CORS
+│
 └── OrderServiceApplication.java
-🚀 Como Executar o Projeto
-1. Subindo a Infraestrutura (Docker)
-O projeto depende de PostgreSQL, Redis e LocalStack. Certifique-se de ter o Docker instalado e rodando.
-Na raiz do projeto (onde está o arquivo docker-compose.yml da arquitetura), execute:
+```
 
-Bash
-docker-compose up -d
-2. Criando a Fila SQS no LocalStack
-Bash
-aws --endpoint-url=http://localhost:4566 sqs create-queue --queue-name pagamento-pix-status --region us-east-1
-3. Executando a Aplicação Spring Boot
-Não é necessário ter o Maven instalado na máquina, utilize o wrapper incluso:
+---
 
-Bash
-./mvnw clean compile spring-boot:run
-(A aplicação estará disponível na porta 8080)
+## Documentação Interativa (Swagger)
 
-📖 Documentação da API
-1. Criar Nova Ordem de Compra
-Cria um pedido, verifica a idempotência no Redis e tenta integração síncrona. Em caso de sucesso, aguarda atualização via SQS.
+A API está documentada com **SpringDoc OpenAPI** e pode ser explorada via Swagger UI após subir a aplicação:
 
-Rota: POST /api/v1/orders
+```
+http://localhost:8080/swagger-ui.html
+```
 
-Headers:
+---
 
-Authorization: Bearer <token_jwt>
+## Recursos da API
 
-Idempotency-Key: <uuid_gerado_pelo_front>
+Todos os endpoints (exceto `/login` e `/users`) exigem autenticação via `Authorization: Bearer <token>`.
 
-Body:
+### Autenticação
 
-JSON
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/login` | Autentica e retorna JWT |
+| `POST` | `/users` | Cria novo usuário |
+
+**POST /login**
+```json
+// Request
+{ "login": "usuario", "password": "senha" }
+
+// Response 200
+{ "token": "<jwt>", "type": "Bearer" }
+```
+
+### Ordens
+
+| Método | Rota | Headers obrigatórios | Descrição |
+|---|---|---|---|
+| `POST` | `/orders` | `Authorization`, `Idempotency-Key` | Cria uma ordem e inicia o pagamento |
+| `GET` | `/orders?cpf_comprador=` | `Authorization` | Lista ordens de um comprador pelo CPF |
+
+**POST /orders**
+```json
+// Request
 {
   "id_item": "123e4567-e89b-12d3-a456-426614174999",
-  "valor": 30.50,
+  "valor": 150.00,
   "meio_pagamento": "PIX",
-  "nome_comprador": "Carlos Souza",
-  "cpf_comprador": "98765432107"
+  "nome_comprador": "Maria Silva",
+  "cpf_comprador": "12345678901"
 }
-2. Consultar Histórico de Ordens
-Busca todas as ordens de um comprador de forma simplificada.
 
-Rota: GET /api/v1/orders?cpf_comprador=98765432107
+// Response 201
+{
+  "id": "a364d3f3-99bf-4e4d-a269-ca9239f6906c",
+  "status": "PENDENTE_PAGAMENTO",
+  "criado_em": "2025-01-15T10:30:00"
+}
+```
 
-Headers: Authorization: Bearer <token_jwt>
+### Meios de Pagamento
 
-Response (200 OK):
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/payment-methods` | Lista os meios disponíveis (PIX, CREDITO, DEBITO) — resposta cacheada |
 
-JSON
-[
-  {
-    "id": "a364d3f3-99bf-4e4d-a269-ca9239f6906c",
-    "nome_comprador": "Carlos Souza",
-    "status": "PAGO"
-  }
-]
-🧪 Cobertura de Testes
-O projeto conta com uma robusta suíte de testes unitários focados na camada Core e testes de integração para os adaptadores de entrada (MockMvc).
-Para rodar os testes:
+### Monitoramento
 
-Bash
-./mvnw test
-Desenvolvido com foco em engenharia de software de alta performance e resiliência.
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/actuator/health` | Status de saúde da aplicação |
+| `GET` | `/actuator/info` | Metadados do serviço |
 
-[Postman] -> (POST /orders)
-   │
-   ▼
-[Java: order-service]
-   │ 1. Salva no Postgres como PENDENTE_PAGAMENTO
-   │ 2. Dispara chamada HTTP Feign para o Go
-   ▼
-[Go: payment-processor]
-   │ 1. Recebe a chamada e salva no MongoDB
-   │ 2. Posta o ID na fila FIFO 'pagamento-pix-pendente'
-   │ 3. O próprio Listener do Go consome essa fila FIFO
-   │ 4. O Go processa o status (Random) e posta na fila 'pagamento-pix-status'
-   ▼
-[LocalStack: SQS] (Mensagem trafega de uma fila para a outra)
-   ▼
-[Java: order-service]
-     1. O seu Listener SQS detecta a mensagem automaticamente
-     2. O UseCase atualiza o Postgres para PAGO/CANCELADO/RECUSADO
-     3. O Java dispara o Feign de volta (PATCH) para o Go atualizar o MongoDB
+---
+
+## Fluxo Completo de Pagamento
+
+```
+POST /orders
+    │
+    ├─ 1. Verifica Idempotency-Key no Redis
+    ├─ 2. Valida regras de domínio (valor, CPF, nome)
+    ├─ 3. Persiste ordem como PENDENTE_PAGAMENTO no PostgreSQL
+    └─ 4. Chama payment-processor via Feign (Circuit Breaker)
+              │
+              ├─ [SUCESSO] Atualiza status com resposta síncrona
+              │
+              └─ [FALHA / CIRCUIT OPEN]
+                    └─ Mantém PENDENTE_PAGAMENTO
+                         └─ Worker (60s) retenta automaticamente
+
+[payment-processor publica em SQS: pagamento-pix-status]
+    │
+    └─ PixNotificationListener
+          ├─ Atualiza status no PostgreSQL
+          └─ Callback PATCH → payment-processor (sincroniza MongoDB)
+```
